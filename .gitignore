@@ -1,0 +1,16 @@
+
+config.py
+data.csv
+Answers.txt
+cycleThroughNoAnswer.py
+findLink.py
+infoOutput.txt
+jobsApplied.csv
+jobsFailed.csv
+noAnswers.txt
+requirements.txt
+skipJobs.csv
+skipJobs.txt
+chromedriver.exe
+__pycache__/config.cpython-38.pyc
+__pycache__/app_bot.cpython-38.pyc
