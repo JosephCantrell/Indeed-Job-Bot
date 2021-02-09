@@ -1,0 +1,4 @@
+Jobs applied to (Completed):
+511
+Jobs Failed to apply to:
+2031
