@@ -9,6 +9,15 @@ job_urls = ['https://www.indeed.com/jobs?q=Python&l=United+States&remotejob=032b
 'https://www.indeed.com/jobs?q=Junior+Software+Developer&l=United+States&remotejob=032b3046-06a3-4876-8dfd-474eb5e7ed11'
 ] #job search url
 
+job_title_rejections = ['Intern',
+'College',
+'Teaching',
+'Teach',
+'Internship']
+
+job_company_rejections = ['Coderbyte']
+
+
 
 questionAndAnswer = [
 'pay','$70,000 - $80,000', 
