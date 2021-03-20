@@ -190,13 +190,13 @@ class EasyApplyBot:
                     
                     
                 
-                self.doTheStuff()
+                self.jobPageController()
                 
                 # If we did find the next page button, continue and loop
                 if oneMore == False:
                     nextButton.click()
                     time.sleep(1 * self.sleepMulti + random.uniform(.1,.5))
-                # If we did not find the next page button and we have finished with doTheStuff, we are finished
+                # If we did not find the next page button and we have finished with jobPageController, we are finished
                 else:
                     done = True
                 
@@ -264,6 +264,7 @@ class EasyApplyBot:
                 # If our click_apply() function has returned false, that means there is either an error, outside link, or a previously applied to job.
                 if self.click_apply() == False or self.checkIfReject() == False:
                     # Break from this loop
+                    print('Determined that this job needs to be skipped.')
                     self.browser.close()
                     self.browser.switch_to.window(self.browser.window_handles[0])
                     
@@ -339,20 +340,31 @@ class EasyApplyBot:
                     
 
     def checkIfReject(self):
+        # Find the title on the webpage
         temp = self.browser.find_elements_by_xpath('//*[@id="viewJobSSRRoot"]/div[1]/div[3]/div[1]/div[1]/h1')
+        # if the title exists (error checking. should always exist but the xpath might change)
         if temp:
+            # for items in the temp item, there should only be one. error checking
             for i in range(0,len(temp)):
+                # for items in the array item, 
                 for j in job_title_rejections:
+                    # if the item is in the title,
                     if j.lower() in temp[i].text.lower():
-                        print('Found a job title that meets rejection')
+                        print('Skipping due to ' + j.lower() + ' in the title. ' + temp[i].text)
                         return False
+        # Find the company name on the webpage
         temp = self.browser.find_elements_by_xpath('//*[@id="viewJobSSRRoot"]/div[1]/div[3]/div[1]/div[2]/div/div/div[1]/div')
+        # if the company name exists (error checking. should always exist but the xpath might change)
         if temp:
+            # for all items in  the temp, there should only be one. Error checking
             for i in range(0,len(temp)):
+                # for items in the config item named job_company_rejections
                 for j in job_company_rejections:
+                    # if our item in the array lowered is in the company name
                     if j.lower() in temp[i].text.lower():
-                        print('Found a company that meets rejection')
+                        print('Skipping due to ' + j.lower() + ' company name. ' + temp[i].text)
                         return False
+        # else we should not reject it
         return True
     
     # Simple return function that takes the company name and inputs it into a return string that gets put into the cover letter section of the application
@@ -432,7 +444,6 @@ class EasyApplyBot:
         temp = self.browser.find_elements_by_xpath('//*[@id="saveJobButtonContainer"]/div/div/div/div[2]/button')
         if len(temp) > 0:
             if temp[0].text == 'Applied':
-                print('Already Applied in Click Apply')
                 return False
     
         temp = self.browser.find_elements_by_xpath('//*[@id="indeedApplyWidget"]/div[2]/button')
