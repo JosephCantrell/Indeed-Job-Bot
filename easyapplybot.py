@@ -1,6 +1,4 @@
-import time, random, csv, sys
-import argparse
-import winsound
+import time, random, csv, sys, datetime, argparse, winsound
 from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver import ActionChains
@@ -11,7 +9,6 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
-from datetime import datetime, timedelta
 
 from config import username, password, job_urls, job_title_rejections, job_company_rejections, main_page, questionAndAnswer
 
@@ -41,11 +38,16 @@ class EasyApplyBot:
         self.inForm = False
         self.alreadyApplied = False
         self.typedLetter = False
-        self.previousURL = ''
+        
+        self.sleepInMins = 0
+        self.sleepHowLongMins = 0
+        self.firstCheckTime = 0
+        
         self.majorErrorCount = 0
         self.majorErrorJustHappened = False
         self.majorErrorCutOff = 10
         self.stopApplication = False
+        self.currentCountOfJobs = 0
         self.wait = WebDriverWait(self.browser, 30)
         self.browser.maximize_window()
       
@@ -200,17 +202,12 @@ class EasyApplyBot:
                 
            
     # Major function that determines company information and writes information to output files
-    def doTheStuff(self):
+    def jobPageController(self):
         jobElements = self.browser.find_elements_by_class_name('jobsearch-SerpJobCard')
         href = ['0'] * len(jobElements)
         companyName = [''] * len(jobElements)
         salary = [''] * len(jobElements)
         title = [''] * len(jobElements)
-        
-        sleepInMs = 0
-        sleepHowLongMins = 0
-        firstCheckTime = 0
-        
         
         # Load things from element. This is what the bot prints out when applied/failed jobs occur
         for j in range(0, len(jobElements)):
@@ -234,17 +231,18 @@ class EasyApplyBot:
                     previouslyAppliedJobs.append(line[:-1])
         
         # We need to set the values.
-        if sleepInMins == 0:
-            sleepInMins = random.randint(20,40)
-            sleepHowLongMins = random.uniform(3,5)
-            firstCheckTime = time.time()
-            print('Will sleep in ' + sleepInMins + ' minutes')
+        if self.sleepInMins == 0:
+            self.firstCheckTime = datetime.datetime.now()
+            self.sleepInMins = random.randint(20,40)
+            self.sleepInMins = self.firstCheckTime + datetime.timedelta(minutes = self.sleepInMins)
+            self.sleepHowLongMins = random.uniform(3,5)
         
         # We need to time out for a predetermined amount of time. Looks more bot like. Only occurs at new pages
-        if firstCheckTime + (sleepInMins * 60) >= time.time():
-            print('Time to sleep. Will be back in ' + sleepHowLongMins + ' minutes')
-            time.sleep(sleepHowLongMins * 60)
-            sleepInMins = 0
+        if self.firstCheckTime >= self.sleepInMins:
+            print('Time to sleep. Will be back in ' + str(int(self.sleepHowLongMins)) + 'ish minutes')
+            print('Applied to ' + str(self.currentCountOfJobs) + ' jobs so far')
+            time.sleep(self.sleepHowLongMins * 60)
+            self.sleepInMins = 0
         
         # For each of the links found on the job elements,
         for i in range(0, len(href)):
@@ -279,7 +277,7 @@ class EasyApplyBot:
                     
                     cletter = self.gen_Cover_Letter(companyName[i])
                     # If our question_handler has returned true, we know we successfully applied to this job and we need to increment our output counters.
-                    if self.question_handler(cletter) == True:
+                    if self.question_handler(cletter):
                         # Write how many jobs we have applied to to the information file
                         # Read in the information
                         self.appliedToJobs += 1
@@ -295,6 +293,7 @@ class EasyApplyBot:
                         with open('jobsApplied.csv', mode='a') as data:
                             dataWriter = csv.writer(data, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
                             dataWriter.writerow([companyName[i],title[i],salary[i],href[i]])
+                        self.currentCountOfJobs += 1
                             
 
                             
@@ -366,6 +365,57 @@ class EasyApplyBot:
         if self.browser.current_url == targetURL:
             return True
         return False
+        
+    def findQuestions(self):
+        textareas = self.browser.find_elements_by_xpath('//*[starts-with(@id, "q_")]/div')
+        textinputs = []
+        questions = []
+        if textareas:
+            for item in textareas:
+                text_item = item.text
+                if text_item:
+                    questions.append(text_item.lower())
+                    xpath_textarea = item.find_elements_by_xpath('.//textarea')
+                    if xpath_textarea:
+                        textinputs.append(xpath_textarea[0])
+                    xpath_inputarea = item.find_elements_by_xpath('.//input')
+                    if xpath_inputarea:
+                        textinputs.append(xpath_inputarea[0])
+        return textinputs, questions
+        
+        
+    def answerQuestions(self, textinputs, questions):
+        for i in range(0, len(questions)):
+            try:
+                a = questions[i].lower()
+                b = textinputs[i]
+            except:
+                pass
+            # Cycle through all of the questionAndAnswer values in the config file. 
+            for j in range(0, int(len(questionAndAnswer)/2)):
+                # If we found a matching answered question, we need to input it
+                if questionAndAnswer[j*2].lower() in a:
+                    # Need a try and except block due to the occasional radio button getting through and breaking
+                    try:
+                        # If there is not a value already present on the question
+                        if b.get_attribute('value') == '':
+                            b.click()
+                            b.send_keys(Keys.CONTROL + "a");
+                            b.send_keys(Keys.DELETE);
+                            b.send_keys(questionAndAnswer[(j*2)+1])
+                            foundAnswer = True
+                    except:
+                        return False
+                # did not find the answer to the question. Record the question for user processing
+                else:
+                    self.noAnswer(a)
+        
+    def noAnswer(self, question):
+        file = open('noAnswers.txt','a')
+        file.write('No Answer: %s\n' % question)
+        file.close()
+        
+    
 
     # Function to click on the apply button.
     def click_apply(self):
@@ -404,7 +454,7 @@ class EasyApplyBot:
             
     # This function takes and figures out what type of question system we got, and then determines what needs to go where
     def question_handler(self, letter):
-        time.sleep(1 * self.sleepMulti + random.uniform(.1,.5))
+        time.sleep(3 * self.sleepMulti + random.uniform(.1,.5))
         try:
             self.majorErrorJustHappened = False
             # some new beta version of applying. completly different than the popup window.
@@ -413,14 +463,16 @@ class EasyApplyBot:
                 cont_button = self.browser.find_elements_by_xpath('//*[@id="ia-container"]/div/div[1]/main/div/div/div/div[2]/div/button')
                 if cont_button:
                     # If we need to select our uploaded resume over the default indeed resume
-                    if len(self.browser.find_elements_by_xpath('//*[@id="ia-container"]/div/div[1]/main/div/div/div/div[1]/div[3]/div/div/div[1]/div/div/div[1]/p[2]')) > 0:
-                        self.browser.find_element_by_xpath('//*[@id="ia-container"]/div/div[1]/main/div/div/div/div[1]/div[3]/div/div/div[1]/div/div/div[1]/p[2]').click()
+                    temp = self.browser.find_elements_by_xpath('//*[@id="ia-container"]/div/div[1]/main/div/div/div/div[1]/div[3]/div/div/div[1]/div/div/div[1]/p[2]')
+                    if temp:
+                        temp[0].click()
                         time.sleep(1 * self.sleepMulti + random.uniform(.1,.5))
                         
                     # If the cover letter button is present on the current page, click it and write the gen_Cover_Letter return value
-                    if len(self.browser.find_elements_by_xpath('//*[@id="write-coverlter-selection-card"]')) > 0:
+                    temp = self.browser.find_elements_by_xpath('//*[@id="write-coverlter-selection-card"]')
+                    if temp:
                         if not self.typedLetter:
-                            coverLetter = self.browser.find_element_by_xpath('//*[@id="write-coverlter-selection-card"]').click()
+                            temp[0].click()
                             time.sleep(1 * self.sleepMulti + random.uniform(.1,1))
                             coverLetter = self.browser.find_element_by_xpath('//*[@id="coverletter-textarea"]')
                             coverLetter.click()
@@ -430,54 +482,17 @@ class EasyApplyBot:
                             time.sleep(1 * self.sleepMulti + random.uniform(.1,1))
                             self.typedLetter = True
                         
-                    # Determine all of the text areas on the page
-                    textareas = self.browser.find_elements_by_xpath('//*[starts-with(@id, "q_")]/div')
                     textinputs = []
                     questions = []
-                    questions = []
-                    # If there are text areas, determine what the text value is and store it. Store the location of the input field as well
-                    if textareas:
-                        for item in textareas:
-                            text_item = item.text
-                            if text_item:
-                                questions.append(text_item.lower())
-                                xpath_textarea = item.find_elements_by_xpath('.//textarea')
-                                if xpath_textarea:
-                                    textinputs.append(xpath_textarea[0])
-                                xpath_inputarea = item.find_elements_by_xpath('.//input')
-                                if xpath_inputarea:
-                                    textinputs.append(xpath_inputarea[0])
-                                    
-                    # For each of the questions we just found, we need to determine what to put
-                    for i in range(0, len(questions)):
-                        foundAnswer = False
-                        try:
-                            a = questions[i].lower()
-                            b = textinputs[i]
-                        except:
-                            pass
-                        # Cycle through all of the questionAndAnswer values in the config file. 
-                        for j in range(0, int(len(questionAndAnswer)/2)):
-                            # If we found a matching answered question, we need to input it
-                            if questionAndAnswer[j*2].lower() in a:
-                                # Need a try and except block due to the occasional radio button getting through and breaking
-                                try:
-                                    # If there is not a value already present on the question
-                                    if b.get_attribute('value') == '':
-                                        b.click()
-                                        b.send_keys(Keys.CONTROL + "a");
-                                        b.send_keys(Keys.DELETE);
-                                        b.send_keys(questionAndAnswer[(j*2)+1])
-                                        foundAnswer = True
-                                except:
-                                    return False
-
-                        # If we did not have an answer, we need to save the question to a file for later adding
-                        if foundAnswer == False:
-                            # no answer to the question:
-                            file = open('noAnswers.txt','a')
-                            file.write('No Answer: %s\n' % a)
-                            file.close()
+                        
+                    # Determine all of the text areas on the page
+                    textinputs , questions = self.findQuestions()
+                    
+                    # Answer all of the found questions.
+                    self.answerQuestions(textinputs, questions)
+                    
+                    time.sleep(1 * self.sleepMulti + random.uniform(.1,.5))
+                    
                     # If the continue button is not greyed out, click it.
                     if cont_button[0].is_enabled():
                         cont_button[0].click()
@@ -486,7 +501,6 @@ class EasyApplyBot:
                         return False
                         
                     
-                    self.previousURL == self.browser.current_url
                     # Loop again
                     return self.question_handler(letter)
                 # No continue button, we are near the end.
@@ -505,7 +519,7 @@ class EasyApplyBot:
                             return True
                         review_button = self.browser.find_elements_by_name('ia-pageButtonGroup-exit')
                         if review_button:
-                            review_button.find_element_by_xpath('./button')
+                            review_button[0].find_element_by_xpath('./button')
                             self.alreadyApplied = True
                             print('M5 Review button? We are quitting for some reason?')
                             return False
@@ -599,59 +613,17 @@ class EasyApplyBot:
                                     print('Tried to click on relevant company name when i wasnt supposed to. im dumb')
                           
                     # Same as before
-                    textareas = self.browser.find_elements_by_xpath('//*[starts-with(@id, "q_")]/div')
                     textinputs = []
                     questions = []
-                    if textareas:
-                        for item in textareas:
-                            text_item = item.text
-                            if text_item:
-                                questions.append(text_item.lower())
-                                xpath_textarea = item.find_elements_by_xpath('.//textarea')
-                                if xpath_textarea:
-                                    textinputs.append(xpath_textarea[0])
-                                xpath_inputarea = item.find_elements_by_xpath('.//input')
-                                if xpath_inputarea:
-                                    textinputs.append(xpath_inputarea[0])
                     
+                    # Determine all of the text areas on the page
+                    textinputs , questions = self.findQuestions()
                     
+                    # Answer all of the found questions.
+                    self.answerQuestions(textinputs, questions)
                     
-
-
-                    for i in range(0, len(questions)):
-                        foundAnswer = False
-                        try:
-                            a = questions[i].lower()
-                            b = textinputs[i]
-                        except:
-                            pass
-                        for j in range(0, int(len(questionAndAnswer)/2)):
-                            if questionAndAnswer[j*2].lower() in a:
-                                try:
-                                    if b.get_attribute('value') == '':
-                                        b.click()
-                                        b.send_keys(Keys.CONTROL + "a");
-                                        b.send_keys(Keys.DELETE);
-                                        b.send_keys(questionAndAnswer[(j*2)+1])
-                                        foundAnswer = True
-                                except:
-                                    return False
-                        
-                        if 'country' in a:
-                            dropdown = self.browser.find_elements_by_xpath('//*[@id="select-0"]')
-                            if dropdown:
-                                dropdown[0].click()
-                                dropdown[0].send_keys('u')
-                                dropdown[0].send_keys(Keys.ENTER)
-                        
-                        # no answer to the question:
-                        if foundAnswer == False:
-                            
-                            file = open('noAnswers.txt','a')
-                            file.write('No Answer: %s\n' % a)
-                            file.close()
-                        
-                        time.sleep(1 * self.sleepMulti + random.uniform(.1,.5))
+                    time.sleep(1 * self.sleepMulti + random.uniform(.1,.5))
+                    
                     if cont_button[0].is_enabled():
                         try:
                             cont_button[0].click()
@@ -680,12 +652,12 @@ class EasyApplyBot:
                             return False
         except:            
             print('Exception occured while applying to this job. Trying again')
-            self.question_handler(letter)
             if self.majorErrorJustHappened:
                 self.majorErrorCount += 1
                 if self.majorErrorCount >= self.majorErrorCutOff:
                     self.quitApplication()
             self.majorErrorJustHappened = True
+            self.question_handler(letter)
 
     # Function to open tabs. Cleans the code up a bit.
     def openTab(self, url):
